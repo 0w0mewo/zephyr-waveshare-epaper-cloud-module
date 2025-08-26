@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/../zephyr/include"
+            ],
+            "defines": [],
+            "cppStandard": "gnu++23",
+            "cStandard": "gnu23",
+            "intelliSenseMode": "clang-arm"
+        }
+    ],
+    "version": 4
+}

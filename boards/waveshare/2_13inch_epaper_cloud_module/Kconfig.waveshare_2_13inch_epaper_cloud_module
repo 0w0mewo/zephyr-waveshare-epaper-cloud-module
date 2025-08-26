@@ -1,0 +1,8 @@
+# Waveshare 2.13 inch E-Paper cloud module board configuration
+
+config BOARD_WAVESHARE_2_13INCH_EPAPER_CLOUD_MODULE
+ 	# The SoC of the original board has ESP32-WROOM-32, which has ESP32-D0WDQ6 SoC and it is NRND.
+	# However, the SoC is somehow compatible with ESP32-D0WDV3
+	select SOC_ESP32_D0WD_V3
+	select SOC_ESP32_PROCPU if BOARD_WAVESHARE_2_13INCH_EPAPER_CLOUD_MODULE_ESP32_PROCPU
+	select SOC_ESP32_APPCPU if BOARD_WAVESHARE_2_13INCH_EPAPER_CLOUD_MODULE_ESP32_APPCPU

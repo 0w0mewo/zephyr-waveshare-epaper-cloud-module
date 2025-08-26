@@ -1,0 +1,6 @@
+board:
+  name: waveshare_2_13inch_epaper_cloud_module
+  full_name: Waveshare 2.13inch E-Paper Cloud Module
+  vendor: waveshare
+  socs:
+  - name: esp32

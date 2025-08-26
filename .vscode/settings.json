@@ -1,0 +1,16 @@
+{
+    "C_Cpp.default.compileCommands": [
+        "${workspaceFolder}/build/compile_commands.json"
+    ],
+    "terminal.integrated.profiles.linux": {
+      "zephyrstartup": {
+        "path": "bash",
+        "args": [
+          "--init-file",
+          "~/zephyrproject/.venv/bin/activate"
+        ]
+      }
+    },
+    "terminal.integrated.defaultProfile.linux": "zephyrstartup",
+    "cmake.sourceDirectory": "${workspaceFolder}/app"
+}

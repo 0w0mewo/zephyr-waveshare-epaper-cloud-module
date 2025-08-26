@@ -1,0 +1,13 @@
+source "Kconfig.zephyr"
+
+config SSID
+    string "ssid"
+    default ""
+
+config PSK
+    string "psk"
+    default ""
+
+config MY_SNTP_SERVER
+    string "sntp server"
+    default ""

@@ -9,10 +9,10 @@ More details: https://www.waveshare.com/wiki/2.13inch_e-Paper_Cloud_Module
 
 ### Quick start
 ```
-west init -m https://github.com/0w0mewo/zephyr-waveshare-epaper-cloud-module --mr main my-workspace
+west init -m https://github.com/0w0mewo/zephyr-waveshare-epaper-cloud-module --mr master
 
 # update Zephyr modules
-cd my-workspace
+cd app
 west update
 
 # build

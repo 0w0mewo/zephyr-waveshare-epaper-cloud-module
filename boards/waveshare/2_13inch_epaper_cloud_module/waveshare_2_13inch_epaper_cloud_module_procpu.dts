@@ -118,5 +118,6 @@
 	status = "okay";
 	pinctrl-0 = <&spim2_default>;
 	pinctrl-names = "default";
+	dma-enabled;
 	cs-gpios = <&gpio0 15 GPIO_ACTIVE_LOW>;
 };

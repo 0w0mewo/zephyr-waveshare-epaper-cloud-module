@@ -1,4 +1,4 @@
-#include <lvgl.h>
+#include <ui/ui.h>
 #include <time.h>
 #include <utils/wifi.h>
 #include <zephyr/device.h>
@@ -25,21 +25,16 @@ int main(void) {
 		return -ENOMEM;
 	}
 
-	lv_obj_t *label = lv_label_create(lv_screen_active());
-	if (label == NULL) {
-		LOG_ERR("fail to create label");
-		ret = -ENODATA;
-		goto exit;
-	}
-	lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-	lv_label_set_text(label, "connecting...");
+	ui_init();
+	k_msleep(100); // wait for ui initialised
 
+	ui_update_txt("connecting...");
 	wifi_simple_connect();
 
 	ret = wifi_simple_wait_online();
 	if (ret < 0) {
 		LOG_ERR("fail to connect to internet");
-		lv_label_set_text(label, "offline");
+		ui_update_txt("offline");
 
 		goto exit;
 	}
@@ -48,7 +43,7 @@ int main(void) {
 	// print time on display every minute
 	for (;;) {
 		sysclock_time_txt(strbuf, SMALL_STRBUF_SIZE);
-		lv_label_set_text(label, strbuf);
+		ui_update_txt(strbuf);
 
 		k_sleep(K_SECONDS(60));
 	}

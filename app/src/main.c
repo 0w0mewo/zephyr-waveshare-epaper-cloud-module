@@ -1,7 +1,7 @@
+#include <lvgl.h>
 #include <time.h>
 #include <utils/wifi.h>
 #include <zephyr/device.h>
-#include <zephyr/display/cfb.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -17,7 +17,7 @@ static int sysclock_time_txt(char *strbuf, size_t size);
 static const struct device *const disp_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 
 int main(void) {
-	int ret;
+	int ret = 0;
 
 	char *strbuf = k_malloc(SMALL_STRBUF_SIZE);
 	if (strbuf == NULL) {
@@ -25,13 +25,22 @@ int main(void) {
 		return -ENOMEM;
 	}
 
+	lv_obj_t *label = lv_label_create(lv_screen_active());
+	if (label == NULL) {
+		LOG_ERR("fail to create label");
+		ret = -ENODATA;
+		goto exit;
+	}
+	lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+	lv_label_set_text(label, "connecting...");
+
 	wifi_simple_connect();
 
 	ret = wifi_simple_wait_online();
 	if (ret < 0) {
 		LOG_ERR("fail to connect to internet");
-		cfb_print(disp_dev, "OFFLINE", 0, 0);
-		cfb_framebuffer_finalize(disp_dev);
+		lv_label_set_text(label, "offline");
+
 		goto exit;
 	}
 	LOG_INF("connected to internet");
@@ -39,14 +48,7 @@ int main(void) {
 	// print time on display every minute
 	for (;;) {
 		sysclock_time_txt(strbuf, SMALL_STRBUF_SIZE);
-		ret = cfb_print(disp_dev, strbuf, 0, 0);
-		if (ret) {
-			LOG_ERR("Failed to print a string\n");
-			continue;
-		}
-
-		// commit changes of the Char FB and update changes to display device
-		cfb_framebuffer_finalize(disp_dev);
+		lv_label_set_text(label, strbuf);
 
 		k_sleep(K_SECONDS(60));
 	}
@@ -66,8 +68,32 @@ static int sysclock_time_txt(char *strbuf, size_t size) {
 	}
 
 	struct tm *t = localtime(&ts.tv_sec);
-	strftime(strbuf, size, "%Y-%m-%d %H:%M:%S", t);
+	strftime(strbuf, size, "%Y-%m-%d\n%H:%M:%S", t);
 
+	return 0;
+}
+
+static int display_fill_white(const struct device *disp_dev) {
+	struct display_capabilities cap;
+	display_get_capabilities(disp_dev, &cap);
+
+	uint32_t fb_size = cap.x_resolution * cap.y_resolution / 8;
+	uint8_t *zeros = k_malloc(fb_size);
+	if (zeros == NULL) {
+		return -ENOMEM;
+	}
+	memset(zeros, 0xff, fb_size);
+
+	struct display_buffer_descriptor desc = {
+		.buf_size = fb_size,
+		.frame_incomplete = false,
+		.height = cap.y_resolution,
+		.width = cap.x_resolution,
+		.pitch = cap.x_resolution,
+	};
+	display_write(disp_dev, 0, 0, &desc, zeros);
+
+	k_free(zeros);
 	return 0;
 }
 
@@ -83,21 +109,8 @@ static int display_init(const struct device *disp_dev) {
 		}
 	}
 
-	display_blanking_off(disp_dev);
-
-	// attach the display device to cfb instant and initialise char framebuffer
-	if (cfb_framebuffer_init(disp_dev)) {
-		return -EIO;
-	}
-
-	// clear char framebuffer
-	cfb_framebuffer_clear(disp_dev, true);
-	cfb_framebuffer_invert(disp_dev);
-	cfb_set_kerning(disp_dev, 3);
-	cfb_framebuffer_set_font(disp_dev, 1);
-
-	// clear Char FB but do not clear FB of the display device
-	cfb_framebuffer_clear(disp_dev, false);
+	// clear the screen
+	display_fill_white(disp_dev);
 
 	return 0;
 }

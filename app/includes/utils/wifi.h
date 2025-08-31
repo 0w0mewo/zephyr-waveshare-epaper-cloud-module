@@ -25,4 +25,7 @@ int wifi_simple_print_scan(void);
 /* sync SYS_CLOCK_REALTIME with sntp */
 int sysclock_sync_sntp(void);
 
+/* is SYS_CLOCK_REALTIME last synced successfully*/
+bool sysclock_is_synced(void);
+
 #endif

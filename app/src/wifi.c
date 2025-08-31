@@ -3,10 +3,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_l2.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/sntp.h>
 #include <zephyr/net/wifi_mgmt.h>
-#include <zephyr/net/net_l2.h>
 
 LOG_MODULE_REGISTER(wifi_utils, LOG_LEVEL_INF);
 
@@ -19,6 +19,11 @@ LOG_MODULE_REGISTER(wifi_utils, LOG_LEVEL_INF);
 
 #define FMT_MAC_ADDR "%x:%x:%x:%x:%x:%x"
 #define MAC_ADDR(x) x[0], x[1], x[2], x[3], x[4], x[5]
+
+enum {
+	WIFI_SIMPLE_CONNECTED,
+	WIFI_SIMPLE_SNTP_RESYNCED,
+};
 
 struct wifi_simple_scan_results {
 	struct wifi_scan_result *res;
@@ -51,7 +56,7 @@ static void wifi_simple_scan_results_reset(struct wifi_simple_scan_results *scan
 K_SEM_DEFINE(inet_ready, 0, 1);
 K_SEM_DEFINE(scan_done, 0, 1);
 
-static atomic_t connected;
+static atomic_t flags;
 static struct wifi_simple_scan_results scan_results;
 
 static void sysclock_resync_work_handler(struct k_work *work);
@@ -93,16 +98,14 @@ void wifi_simple_disconnect(void) {
 }
 
 static void handle_connect(void) {
-	// signaling interent ready
-	k_sem_give(&inet_ready);
+	LOG_INF("network connected");
 
 	// sync systime without wait
 	k_work_reschedule(&sysclock_resync_work, K_NO_WAIT);
 }
 
 static void handle_disconnect(void) {
-	//
-	k_sem_reset(&inet_ready);
+	LOG_INF("network disconnected");
 
 	// cancel further systime resync task
 	k_work_cancel_delayable(&sysclock_resync_work);
@@ -116,20 +119,15 @@ static void inet_connectivity_handler(struct net_mgmt_event_callback *cb, uint64
 
 	switch (mgmt_event) {
 		case NET_EVENT_L4_CONNECTED: {
-			LOG_INF("network connected");
+			atomic_set_bit(&flags, WIFI_SIMPLE_CONNECTED);
+			k_sem_give(&inet_ready);
+
 			handle_connect();
-			atomic_set(&connected, 1);
 		} break;
 
 		case NET_EVENT_L4_DISCONNECTED: {
-			LOG_INF("network disconnected");
-			bool is_connected = (atomic_get(&connected) == 1);
-			if (!is_connected) {
-				// auto reconnect if it's NOT disconnected by wifi_disconnect()
-				wifi_simple_connect();
-			} else {
-				atomic_set(&connected, 0);
-			}
+			atomic_clear_bit(&flags, WIFI_SIMPLE_CONNECTED);
+			k_sem_reset(&inet_ready);
 
 			handle_disconnect();
 		} break;
@@ -196,11 +194,11 @@ int wifi_simple_print_scan(void) {
 	LOG_INF("found %d APs", scan_results.count);
 
 	struct wifi_scan_result *res = scan_results.res;
-	for(uint8_t i = 0; i < scan_results.count; i++) {
-		printk("%s("FMT_MAC_ADDR") | %-6s(%u) | %-4d | %-20s\n", 
-			res[i].ssid, MAC_ADDR(res[i].mac), 
-			wifi_band_txt(res[i].band), res[i].channel,
-			res[i].rssi, wifi_security_txt(res[i].security));
+	for (uint8_t i = 0; i < scan_results.count; i++) {
+		printk("%s(" FMT_MAC_ADDR ") | %-6s(%u) | %-4d | %-20s\n",
+			   res[i].ssid, MAC_ADDR(res[i].mac),
+			   wifi_band_txt(res[i].band), res[i].channel,
+			   res[i].rssi, wifi_security_txt(res[i].security));
 	}
 
 exit:
@@ -217,7 +215,7 @@ void wifi_simple_init(void) {
 
 	net_mgmt_init_event_callback(&wifi_scan_cb, wifi_scan_event_handler, WIFI_SCAN_EVENT_MASK);
 
-	connected = ATOMIC_INIT(false);
+	flags = ATOMIC_INIT(0);
 }
 
 int wifi_simple_wait_online(void) {
@@ -229,7 +227,7 @@ int wifi_simple_wait_online(void) {
 }
 
 bool wifi_simple_is_connected(void) {
-	return (atomic_get(&connected) == 1);
+	return atomic_test_bit(&flags, WIFI_SIMPLE_CONNECTED);
 }
 
 /* sync SYS_CLOCK_REALTIME with sntp */
@@ -242,7 +240,7 @@ int sysclock_sync_sntp(void) {
 		LOG_ERR("Cannot set time using SNTP");
 		return res;
 	}
-	
+
 	tspec.tv_sec = ts.seconds;
 	tspec.tv_nsec = ((uint64_t)ts.fraction * NSEC_PER_SEC) >> 32;
 	res = sys_clock_settime(SYS_CLOCK_REALTIME, &tspec);
@@ -253,14 +251,20 @@ int sysclock_sync_sntp(void) {
 	return res;
 }
 
+bool sysclock_is_synced(void) {
+	return atomic_test_bit(&flags, WIFI_SIMPLE_SNTP_RESYNCED);
+}
+
 static void sysclock_resync_work_handler(struct k_work *work) {
 	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 
 	int ret = sysclock_sync_sntp();
 	if (ret < 0) {
 		LOG_ERR("fail to resync clock: %d", ret);
+		atomic_clear_bit(&flags, WIFI_SIMPLE_SNTP_RESYNCED);
 	} else {
 		LOG_INF("time resync");
+		atomic_set_bit(&flags, WIFI_SIMPLE_SNTP_RESYNCED);
 	}
 
 	k_work_reschedule(dwork, ret < 0 ? K_SECONDS(5) : K_SECONDS(3600));

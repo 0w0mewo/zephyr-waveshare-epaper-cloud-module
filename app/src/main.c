@@ -1,5 +1,5 @@
-#include <ui/ui.h>
 #include <time.h>
+#include <ui/ui.h>
 #include <utils/wifi.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
@@ -26,7 +26,7 @@ int main(void) {
 	}
 
 	ui_init();
-	k_msleep(100); // wait for ui initialised
+	k_msleep(100);	// wait for ui initialised
 
 	ui_update_txt("connecting...");
 	wifi_simple_connect();
@@ -42,8 +42,12 @@ int main(void) {
 
 	// print time on display every minute
 	for (;;) {
-		sysclock_time_txt(strbuf, SMALL_STRBUF_SIZE);
-		ui_update_txt(strbuf);
+		if (sysclock_is_synced()) {
+			sysclock_time_txt(strbuf, SMALL_STRBUF_SIZE);
+			ui_update_txt(strbuf);
+		} else {
+			ui_update_txt("SNTP error");
+		}
 
 		k_sleep(K_SECONDS(60));
 	}

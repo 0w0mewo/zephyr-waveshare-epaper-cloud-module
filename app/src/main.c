@@ -1,3 +1,4 @@
+#include <game_of_life.h>
 #include <time.h>
 #include <ui/ui.h>
 #include <utils/wifi.h>
@@ -14,10 +15,25 @@ static int display_init(const struct device *disp_dev);
 static int sysclock_time_txt(char *strbuf, size_t size);
 
 #define SMALL_STRBUF_SIZE 64
+
 static const struct device *const disp_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+static struct game_of_life world;
+static uint32_t world_checksum = 0;
+
+static void cell_update_callback(size_t x, size_t y, uint8_t cell_state) {
+	if (cell_state == CELL_STATE_ALIVE_PRESENT) {
+		ui_canvas_set_px(x, y);
+	} else {
+		ui_canvas_clear_px(x, y);
+	}
+
+	world_checksum += cell_state * (x + y);
+}
 
 int main(void) {
 	int ret = 0;
+	uint32_t last_world_checksum = 0;
+	uint8_t steady_count = 0;
 
 	char *strbuf = k_malloc(SMALL_STRBUF_SIZE);
 	if (strbuf == NULL) {
@@ -28,32 +44,50 @@ int main(void) {
 	ui_init();
 	k_msleep(100);	// wait for ui initialised
 
-	ui_update_txt("connecting...");
+	game_of_life_init(&world, CANVAS_WIDTH, CANVAS_HEIGHT);
+	game_of_life_set_cell_update_callback(&world, cell_update_callback);
+	game_of_life_reset(&world);
+
+	ui_set_time_txt("connecting...");
+	ui_canvas_fill_noise();
 	wifi_simple_connect();
 
 	ret = wifi_simple_wait_online();
 	if (ret < 0) {
 		LOG_ERR("fail to connect to internet");
-		ui_update_txt("offline");
+		ui_set_time_txt("offline");
 
-		goto exit;
+	} else {
+		LOG_INF("connected to internet");
 	}
-	LOG_INF("connected to internet");
 
-	// print time on display every minute
 	for (;;) {
+		// print time on display every minute
 		if (sysclock_is_synced()) {
 			sysclock_time_txt(strbuf, SMALL_STRBUF_SIZE);
-			ui_update_txt(strbuf);
 		} else {
-			ui_update_txt("SNTP error");
+			strncpy(strbuf, "SNTP error", SMALL_STRBUF_SIZE);
 		}
+		ui_set_time_txt(strbuf);
+
+		// update game of life world state
+		game_of_life_update(&world);
+		if (world_checksum == last_world_checksum) {
+			steady_count++;
+		}
+		if (steady_count > 3) {
+			game_of_life_reset(&world);
+			steady_count = 0;
+		}
+		last_world_checksum = world_checksum;
+		world_checksum = 0;
 
 		k_sleep(K_SECONDS(60));
 	}
 
-exit:
 	k_free(strbuf);
+	game_of_life_deinit(&world);
+
 	return ret;
 }
 
